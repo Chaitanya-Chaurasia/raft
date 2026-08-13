@@ -1,3 +1,6 @@
+# every node lives in a RaftNode class, and is only directly going to talk to other
+# nodes via the message_bus (a network simulation over our cluster). every node is spawned
+# in our cluster and we can have many different clusters.
 class RaftNode:
     def __init__(self, value):
         pass
@@ -14,6 +17,9 @@ class RaftNode:
     def stop():
         pass
 
+    # the _run() method runs every interval to check for election timeouts and send heartbeats.
+    # on every interval finish, we increment the current term by 1, and we take the no. of terms 
+    # into account when selecting a new leader.
     async def _run():
         pass
 
@@ -22,15 +28,32 @@ class RaftNode:
     
     def _on_heartbeat_interval(self):
         pass
+    
 
-    def _become_follower(self, term: int): pass-m "g"
-    def _start_election(self): pass                # candidate's term+1, vote for self and ask everyone
-    def _become_leader(self): pass
+    def _become_follower(self, term: int):
+        pass
 
-    def _on_request_vote(self, msg): ...          # decide: grant or refuse → send reply
-    def _on_request_vote_reply(self, msg): ...    # count votes → maybe _become_leader
-    def _on_append_entries(self, msg): ...        # consistency check, append, reply
-    def _on_append_entries_reply(self, msg): ...  # update match/nextIndex → maybe advance commit
+    # in case a leader dies, we will increment the current term by 1 
+    # because elections can only happen in a new term. 
+    def _start_election(self): 
+        pass                
 
-    # ══ output ══
-    def snapshot(self) -> dict: ...               # my state, for Cluster.snapshot()
+    def _become_leader(self): 
+        pass
+
+    # these are RPCs we will be sending to other nodes via the message bus
+    # in a real world, this would be via gRPCs to other nodes
+    # these are callbacks that will be called when _start_election or _become_leader are called.
+
+    def _on_request_vote(self, msg): 
+        pass
+    def _on_request_vote_reply(self, msg): 
+        pass
+    def _on_append_entries(self, msg): 
+        pass
+    def _on_append_entries_reply(self, msg):
+        pass
+
+    # return the current state of our node
+    def snapshot(self) -> dict:
+        pass    
