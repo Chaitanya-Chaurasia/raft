@@ -1,0 +1,18 @@
+# virtual environment
+.venv/
+
+# python bytecode
+__pycache__/
+*.pyc
+
+# tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# env files
+.env*
+!.env.example
+
+# misc
+.DS_Store
