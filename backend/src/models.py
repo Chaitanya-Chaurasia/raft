@@ -1,12 +1,15 @@
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field
-from typing import Annotated, Union, Literal
+
 
 class LogEntry(BaseModel):
     term: int
     command: str
 
+
 # a raft node will send this message via the bus to request votes from other nodes.
-# the other nodes will need to make a choice based on the recency (last log) and how 
+# the other nodes will need to make a choice based on the recency (last log) and how
 # consistent it has been (last log term)
 class RequestVote(BaseModel):
     type: Literal["request_vote"] = "request_vote"
@@ -15,12 +18,14 @@ class RequestVote(BaseModel):
     last_log_idx: int
     last_log_term: int
 
+
 # raft nodes will send a reply via the bus on whether they've elected the node as a leader or not
 class RequestVoteReply(BaseModel):
     type: Literal["request_vote_reply"] = "request_vote_reply"
     term: int
     voter_id: int
     vote_granted: bool
+
 
 # when we have to send entries across our cluster, let us consider this scenario:
 # node A is leader in term 2, it appends SET x=1 at index 5 to its own log, sends AppendEntries but crashes before anything is delivered so only A has that entry.
@@ -36,16 +41,21 @@ class AppendEntries(BaseModel):
     leader_id: int
     prev_log_idx: int
     prev_log_term: int
-    entries : list[LogEntry] = []
+    entries: list[LogEntry] = []
     leader_commit: int = 0
+
 
 # once a log entry has been appended, the node will return the term of the new entry, its id (follower_id), status and the total size of the node's entries (match_idx)
 class AppendEntriesReply(BaseModel):
-    type: Literal["append_entries_reply"] = "append_entries_reply"s
+    type: Literal["append_entries_reply"] = "append_entries_reply"
     term: int
     follower_id: int
     success: bool
     match_idx: int
 
+
 # we do a union of all different models into one parent type, with type as the identifier
-MessagePayload = Annotated[Union[RequestVote, RequestVoteReply, AppendEntries, AppendEntriesReply], Field(discriminator=type)]
+MessagePayload = Annotated[
+    RequestVote | RequestVoteReply | AppendEntries | AppendEntriesReply,
+    Field(discriminator=type),
+]
