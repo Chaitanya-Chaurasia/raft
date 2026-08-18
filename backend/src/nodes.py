@@ -1,9 +1,32 @@
 # every node lives in a RaftNode class, and is only directly going to talk to other
 # nodes via the message_bus (a network simulation over our cluster). every node is spawned
 # in our cluster and we can have many different clusters.
+import asyncio
+from models import LogEntry
+from message_bus import MessageBus
 class RaftNode:
-    def __init__(self, value):
-        pass
+    def __init__(self, node_id: int, bus: MessageBus):
+        self.id = id
+        self.bus = bus
+        self.current_term = 0
+        self.voted_for: int = 0
+        self.logs: list[LogEntry] = []
+        self.role = "follower"
+        self.alive = True
+        self.commit_idx = 0
+        self.election_deadline = 0.0
+
+        # if this is a leader, we will be needing the following:
+        #   - next_idx is a map of {node_id: idx} when the leader thinks optimistically i.e all 
+        #     nodes are on the same page as the leader
+        #   - match_idx is a map of {node_id: idx} when the leader thinks pessimistically i.e, the 
+        #     highest index node has confirmed that matches the leader's logs
+        self.next_idx: dict[int, int] = {}
+        self.match_idx: dict[int, int] = {}
+        self.heartbeat_due = 0.0
+
+        self.votes_received: set[int] = set()
+        self._task: asyncio.Task | None = None
 
     def recieve_command():
         pass
