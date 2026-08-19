@@ -1,3 +1,4 @@
+from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
@@ -6,6 +7,12 @@ from pydantic import BaseModel, Field
 class LogEntry(BaseModel):
     term: int
     command: str
+
+
+class Role(StrEnum):
+    FOLLOWER = "follower"
+    CANDIDATE = "candidate"
+    LEADER = "leader"
 
 
 # a raft node will send this message via the bus to request votes from other nodes.
@@ -57,5 +64,5 @@ class AppendEntriesReply(BaseModel):
 # we do a union of all different models into one parent type, with type as the identifier
 MessagePayload = Annotated[
     RequestVote | RequestVoteReply | AppendEntries | AppendEntriesReply,
-    Field(discriminator=type),
+    Field(discriminator="type"),
 ]

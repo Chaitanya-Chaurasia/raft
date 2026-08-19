@@ -1,6 +1,6 @@
-from fastapi import FastAPI
-from nodes import Node
 import logging
+
+from fastapi import FastAPI
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -17,7 +17,7 @@ def get_node_state():
 
 
 @app.post("/nodes")
-def create_node(node: Node):
+def create_node():
     pass
 
 

@@ -9,8 +9,8 @@ from nodes import RaftNode
 
 class Cluster:
     def __init__(self):
-        self.nodes: dict[int:RaftNode] = {}
-        self.message_bus = MessageBus()
+        self.nodes: dict[int, RaftNode] = {}
+        self.message_bus = MessageBus(self)
         self.next_node_id = 0
 
     def add_node(self):

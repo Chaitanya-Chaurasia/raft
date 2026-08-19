@@ -1,13 +1,23 @@
-from nodes import RaftNode
-from cluster import Cluster
+from __future__ import annotations
+
 import asyncio
-from random import random
 import logging
+import random
 from dataclasses import dataclass
-from datetime import datetime
+from logging import Logger
+from typing import TYPE_CHECKING
+
 from models import MessagePayload
 
-log = logging.getLogger(__name__)
+# these imports exist only for type annotations. importing them for real would create
+# an import cycle (cluster -> nodes -> message_bus -> cluster). with the __future__
+# import above, annotations are never evaluated at runtime, so the guard is safe.
+if TYPE_CHECKING:
+    from cluster import Cluster
+    from nodes import RaftNode
+
+
+log: Logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -16,8 +26,8 @@ class Message:
     src: int
     dst: int
     payload: MessagePayload
-    sent_at: datetime
-    deliver_at: datetime
+    sent_at: float  # event-loop time, seconds (monotonic)
+    deliver_at: float
 
 
 class MessageBus:
@@ -26,19 +36,20 @@ class MessageBus:
         cluster: Cluster,
         latency_range: tuple[float, float] = (0.05, 0.15),
         drop_rate: float = 0.0,
-        partition: list[set(int)] | None = None,
+        partition: list[set[int]] | None = None,
     ):
         self.messages: dict[int, Message] = {}
         self.cluster = cluster
         self.next_msg_id = 0
-        # randomly generate a latency in this range (ms)
-        self.latency_range: tuple[float, float] | None = latency_range or (0.05, 0.15)
+        # each message gets a random latency in this range (seconds)
+        self.latency_range = latency_range
         # a chance that the message vanishes (simulating some issue)
         self.drop_rate = drop_rate
         self.partition = partition
 
-    async def send(self, message: Message):
-        src, dst = message.src, message.dst
+    # nodes call this and only this. fire-and-forget: no return value, no error —
+    # a sender must never be able to learn its message's fate from the bus.
+    def send(self, src: int, dst: int, payload: MessagePayload) -> None:
         if self._is_partitioned(src, dst):
             log.debug("bus: n%d -> n%d blocked by partition", src, dst)
             return
@@ -51,16 +62,16 @@ class MessageBus:
         # and since every app has 1 event loop, the timing can never disagree.
         now = asyncio.get_running_loop().time()
         latency = random.uniform(*self.latency_range)
-        msg = Message(
+        message = Message(
             id=self.next_msg_id,
             src=src,
             dst=dst,
-            payload=message,
+            payload=payload,
             sent_at=now,
             deliver_at=now + latency,
         )
         self.next_msg_id += 1
-        self.messages[message.id] = msg
+        self.messages[message.id] = message
 
         log.debug(
             "bus: msg %d n%d -> n%d in flight (%.0fms)",
@@ -74,44 +85,61 @@ class MessageBus:
         # it is the job of _deliver_message to handle delivery.
         asyncio.create_task(self._deliver_message(message))
 
-    async def _deliver_message(self, message: Message):
+    async def _deliver_message(self, message: Message) -> None:
         await asyncio.sleep(message.deliver_at - message.sent_at)
 
+        # off the wire unconditionally, before we even look at the destination
         del self.messages[message.id]
-        node: RaftNode = self.cluster.nodes.get[message.dst]
+
+        node: RaftNode | None = self.cluster.nodes.get(message.dst)
         # if a node dies down after message is on the bus, return
         if node is None or not node.alive:
             log.debug(
-                  "bus: msg %d n%d -> n%d dead letter",
-                  message.id, message.src, message.dst,
+                "bus: msg %d n%d -> n%d dead letter",
+                message.id,
+                message.src,
+                message.dst,
             )
             return
-        node.handle_message(message)
+        # payload only — nodes never see envelopes
+        node.handle_message(message.payload)
 
-    def set_partition(self, partition: list[set[int]]):
-        pass
+    def set_partition(self, partition: list[set[int]]) -> None:
+        seen: set[int] = set()
+        for group in partition:
+            if seen & group:
+                raise ValueError(f"node(s) {seen & group} appear in more than one group")
+            seen |= group
+        self.partition = partition
+        log.info("bus: partition set to %s", partition)
 
-    def fix_partition(self):
+    def fix_partition(self) -> None:
         self.partition = None
         log.info("bus: partition removed")
 
-    def set_latency(self, min_latency: int, max_latency: int):
+    def set_latency(self, min_latency: float, max_latency: float) -> None:
         if not 0 <= min_latency <= max_latency:
             raise ValueError("latency must satisfy 0 <= min <= max")
         self.latency_range = (min_latency, max_latency)
 
-    def set_drop_rate(self, drop_rate: float):
+    def set_drop_rate(self, drop_rate: float) -> None:
         if not 0 <= drop_rate <= 1:
             raise ValueError("drop_rate must be in [0, 1]")
         self.drop_rate = drop_rate
 
-    def get_messages(self):
+    def get_messages(self) -> list[Message]:
         return list(self.messages.values())
 
-    def _is_partitioned(self, src: int, dst: int):
+    def _is_partitioned(self, src: int, dst: int) -> bool:
         if self.partition is None:
             return False
         for group in self.partition:
             if src in group:
                 return dst not in group  # deliverable only within the same group
         return True  # src in no group so disjoint
+
+    # return who else is in the cluster (so other nodes have visibility while asking for votes).
+    # includes dead nodes on purpose: senders cannot know who is alive, and quorum
+    # math counts members, not survivors.
+    def peer_ids(self, exclude: int) -> set[int]:
+        return set(self.cluster.nodes.keys()) - {exclude}
