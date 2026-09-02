@@ -101,7 +101,6 @@ class MessageBus:
                 message.dst,
             )
             return
-        # payload only — nodes never see envelopes
         node.handle_message(message.payload)
 
     def set_partition(self, partition: list[set[int]]) -> None:

@@ -52,7 +52,8 @@ class AppendEntries(BaseModel):
     leader_commit: int = 0
 
 
-# once a log entry has been appended, the node will return the term of the new entry, its id (follower_id), status and the total size of the node's entries (match_idx)
+# once a log entry has been appended, the node will return the term of the new entry, its id
+# (follower_id), status and the total size of the node's entries (match_idx)
 class AppendEntriesReply(BaseModel):
     type: Literal["append_entries_reply"] = "append_entries_reply"
     term: int

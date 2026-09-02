@@ -1,10 +1,10 @@
 from message_bus import MessageBus
 from nodes import RaftNode
 
-# in raft terms, a cluster is a set of nodes that are able to communicate with each other and agree on the same state.
-# a node is a single instance of a raft server. (think of it as a single EC2 instance in an AWS region)
-# in a real network, the nodes can talk to each other directly, but in our case, we're simulating a network
-# where the nodes can only talk to the message bus.
+# in raft terms, a cluster is a set of nodes that are able to communicate with each other and agree
+# on the same state. a node is a single instance of a raft server. (think of it as a single EC2
+# instance in an AWS region) in a real network, the nodes can talk to each other directly, but in
+# our case, we're simulating a network where the nodes can only talk to the message bus.
 
 
 class Cluster:
@@ -28,6 +28,6 @@ class Cluster:
         pass
 
     # since our raft nodes are not exposed to the API, we need to submit commands to the cluster
-    # which will be forwarded to the appropriate node (based on the election algorithm)
+    # which will be forwarded to the appropriate node (based on the election algorithm) via the bus.
     def submit_command(self, command: str):
         pass

@@ -21,6 +21,8 @@ class RaftNode:
         self.bus = bus
         self.current_term = 0
         self.voted_for: int = 0
+
+        # this is our persistent storage. on real nodes, this is implemented using WAL.
         self.logs: list[LogEntry] = []
         self.role: Role = Role.FOLLOWER
         self.alive = True
@@ -67,7 +69,6 @@ class RaftNode:
                 self._on_election_timeout()
 
     def _on_election_timeout(self):
-        # now that this node hasn't heard from the leader, we do a new election round
         self._start_election()
 
     def _on_heartbeat_interval(self):
