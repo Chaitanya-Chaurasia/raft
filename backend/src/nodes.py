@@ -1,6 +1,7 @@
 # every node lives in a RaftNode class, and is only directly going to talk to other
 # nodes via the message_bus (a network simulation over our cluster). every node is spawned
 # in our cluster and we can have many different clusters.
+from models import AppendEntries
 from models import RequestVoteReply
 import asyncio
 import logging
@@ -13,7 +14,8 @@ log: Logger = logging.getLogger(__name__)
 
 TICK = 0.01  # how often _run checks the clocks
 ELECTION_TIMEOUT_RANGE = (1.5, 3.0)
-
+# this has to be <<< ELECTION_TIMEOUT_RANGE so we can simulate multiple heartbeats per election
+HEARTBEAT_INTERVAL = 0.5
 
 class RaftNode:
     def __init__(self, node_id: int, bus: MessageBus):
@@ -71,11 +73,21 @@ class RaftNode:
     def _on_election_timeout(self):
         self._start_election()
 
+    # only a leader can send a heartbeat
+    # majority of these are going to be empty chunks because leader should keep on pinging
     def _on_heartbeat_interval(self):
-        pass
+        now = asyncio._get_running_loop().time()
+        self.heartbeat_due = now + HEARTBEAT_INTERVAL
 
-    def _become_follower(self, term: int):
-        pass
+        for peer_id in self._peer_ids():
+            self.bus.send(self.id, peer_id, AppendEntries(
+                term=self.current_term,
+                leader=self.id,
+                prev_log_idx=self._last_log_index(),
+                prev_log_term=self._last_log_term(),
+                entries=[],
+                leader_commit=self.commit_idx
+            ))
 
     def _reset_election_deadline(self):
         now = asyncio.get_running_loop().time()
@@ -108,8 +120,8 @@ class RaftNode:
             self.current_term,
         )
 
-        last_idx = len(self.logs)
-        last_term = self.logs[-1].term if self.logs else 0
+        last_idx = self._last_log_idx()
+        last_term = self._last_log_term()
 
         peers = self._peer_ids()
         for peer_id in peers:
@@ -130,6 +142,10 @@ class RaftNode:
     def _become_leader(self):
         pass
 
+    def _become_follower(self, term: int):
+        self.role = Role.FOLLOWER
+
+
     # these are RPCs we will be sending to other nodes via the message bus
     # in a real world, this would be via gRPCs to other nodes
     # these are callbacks that will be called when _start_election or _become_leader are called.
@@ -147,7 +163,7 @@ class RaftNode:
             grant = False
 
         # check if candidate qualifies and has more logs
-        elif (msg.last_log_term, msg.last_log_idx) < (self._last_log_term(), len(self.logs)):
+        elif (msg.last_log_term, msg.last_log_idx) < (self._last_log_term(), self._last_log_idx()):
             grant = False
 
         else:
@@ -180,6 +196,12 @@ class RaftNode:
 
     def _on_append_entries_reply(self, msg):
         pass
+
+    def _last_log_term(self) -> int:
+        return self.logs[-1].term if self.logs else 0
+
+    def _last_log_idx(self) -> int:
+      return len(self.logs)
 
     # return the current state of our node
     def snapshot(self) -> dict:
