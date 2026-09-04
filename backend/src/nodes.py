@@ -1,11 +1,11 @@
 # every node lives in a RaftNode class, and is only directly going to talk to other
 # nodes via the message_bus (a network simulation over our cluster). every node is spawned
 # in our cluster and we can have many different clusters.
+from models import RequestVoteReply
 import asyncio
 import logging
 import random
 from logging import Logger
-
 from message_bus import MessageBus
 from models import LogEntry, RequestVote, Role
 
@@ -92,8 +92,9 @@ class RaftNode:
     #   increment your current term
     #   vote for yourself
     #   reset election deadline to sometime in the future
-    #   get the last log this node stored, and that logs last term (we will use this to check which node is most consistent with data)
-    #   send a RequestVote message to all peers.
+    #   get the last log this node stored, and that logs last term (we will use this to check which
+    #       node is most consistent with data)
+    #   send a RequestVote message to all peers to request to be a leader.
     def _start_election(self):
         self.current_term += 1
         self.role = Role.CANDIDATE
@@ -101,7 +102,11 @@ class RaftNode:
         self.votes_received = {self.id}
         self._reset_election_deadline()
 
-        log.info("n%d: starting election for term %d", self.id, self.current_term)
+        log.info(
+            "n%d: is trying to be a leader and hecne starting election for term %d",
+            self.id,
+            self.current_term,
+        )
 
         last_idx = len(self.logs)
         last_term = self.logs[-1].term if self.logs else 0
@@ -129,11 +134,46 @@ class RaftNode:
     # in a real world, this would be via gRPCs to other nodes
     # these are callbacks that will be called when _start_election or _become_leader are called.
 
-    def _on_request_vote(self, msg):
-        pass
+    # this method is invoked when some other node doesn't hear a heartbeat from the leader
+    # and hence requests a vote and you have to reply to the request.
+    def _on_request_vote(self, msg: RequestVote):
 
-    def _on_request_vote_reply(self, msg):
-        pass
+        # if you're more consistent, do not say YES
+        if msg.term < self.current_term:
+            grant = False
+
+        # only vote if you haven't voted already
+        elif self.voted_for is not None and self.voted_for != msg.candidate_id:
+            grant = False
+
+        # check if candidate qualifies and has more logs
+        elif (msg.last_log_term, msg.last_log_idx) < (self._last_log_term(), len(self.logs)):
+            grant = False
+
+        else:
+            grant = True
+            self.voted_for = msg.candidate_id
+            # we want to reset election deadline because we just voted.
+            # rule is simple - after a vote asked or given, reset the election deadline
+            self._reset_election_deadline()
+
+        self.bus.send(
+            self.id, RequestVoteReply(term=self.current_term, voter_id=self.id, vote_granted=grant)
+        )
+
+    # this is the handler for node A for when node B, C, D sends a decision via _on_request_vote()
+    def _on_request_vote_reply(self, msg: RequestVoteReply):
+        # the tricky bit is that while we poll/wait for decisions, other nodes may also have
+        # requested votes. first step is to check a stale request.
+        if self.role != Role.CANDIDATE or msg.term != self.current_term:
+            log.debug("Vote decision for n%d sent via n%d is stale", self.id, msg.voter_id)
+            return
+        if msg.vote_granted:
+            self.votes_received.add(msg.voter_id)
+            cluster_size = len(self._peer_ids())
+            # win by majority
+            if len(self.votes_received) > cluster_size // 2:
+                self._become_leader()
 
     def _on_append_entries(self, msg):
         pass
