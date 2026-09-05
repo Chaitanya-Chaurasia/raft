@@ -13,8 +13,8 @@ class Cluster:
         self.message_bus = MessageBus(self)
         self.next_node_id = 0
 
-    def add_node(self):
-        pass
+    def add_node(self, node: RaftNode):
+        self.nodes[self.next_node_id] = node
 
     # the difference between kill and delete is that kill is a temporary (still part of
     # the cluster, should be fixed with a reboot) but delete is a permanent state.
