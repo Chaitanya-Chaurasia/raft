@@ -17,6 +17,17 @@ ELECTION_TIMEOUT_RANGE = (1.5, 3.0)
 # this has to be <<< ELECTION_TIMEOUT_RANGE so we can simulate multiple heartbeats per election
 HEARTBEAT_INTERVAL = 0.5
 
+# few terminologies for pedagogical clarifications:
+#   - term : this is a numeric system we use to keep track of a cluster's history. this is local and
+#            made available to other nodes via self.current_term. every time a leader changes,
+#            we increment the term n/w-wide. if nodes are not killed (which is production standard),
+#            terms will not change for months.
+#   - election : if a leader fails to send heartbeats, and we eventually pass on the election
+#                deadline, we're in a new term and have to start an election for a new leader
+#   - heartbeats : every leader has to let the other nodes in the cluster know that its still alive
+#                  and still the leader. so every interval (which is constant), the leader sends an
+#                  AppendEntries message via the bus so the nodes are consistent.
+
 
 class RaftNode:
     def __init__(self, node_id: int, bus: MessageBus):
@@ -69,7 +80,10 @@ class RaftNode:
         self.logs.append(LogEntry(term=self.current_term, command=command))
         log.info(
             "n%d: accepted command %r at idx %d (term %d)",
-            self.id, command, self._last_log_idx(), self.current_term,
+            self.id,
+            command,
+            self._last_log_idx(),
+            self.current_term,
         )
         return True
 
@@ -175,7 +189,7 @@ class RaftNode:
         # rebuild replication bookkeeping from scratch
         last = self._last_log_idx()
         self.next_idx = {p: last + 1 for p in self._peer_ids()}  # optimism: assume caught up
-        self.match_idx = {p: 0 for p in self._peer_ids()}        # knowledge: none confirmed
+        self.match_idx = {p: 0 for p in self._peer_ids()}  # knowledge: none confirmed
 
         # heartbeat immediately because the first beat IS the victory announcement, and it
         # must land before anyone else's election fuse burns down. the _run loop
@@ -184,7 +198,9 @@ class RaftNode:
 
         log.info(
             "n%d: elected LEADER of term %d (votes: %s)",
-            self.id, self.current_term, sorted(self.votes_received),
+            self.id,
+            self.current_term,
+            sorted(self.votes_received),
         )
 
     def _become_follower(self, term: int):
@@ -245,9 +261,53 @@ class RaftNode:
             if len(self.votes_received) > cluster_size // 2:
                 self._become_leader()
 
+    # this is the handler for when a leader appends a new entry to itself and to the other nodes.
+    # sent by the leader node.
     def _on_append_entries(self, msg: AppendEntries):
-        pass
+        if msg.term < self.current_term:
+            # we send match_idx as 0 because it is essentially meaningless info if terms
+            # do not match.
+            self.bus.send(
+                src=self.id,
+                dst=msg.leader_id,
+                payload=AppendEntriesReply(
+                    term=self.current_term, follower_id=self.id, success=False, match_idx=0
+                ),
+            )
 
+        # in case the terms are legit, we want to make sure we're still the follower and
+        # reset election deadline
+        self.role = Role.FOLLOWER
+        self._reset_election_deadline()
+
+        # if we're in the same term, there are still consistency checks we gotta make:
+        #   - the last index we wrote our command to, on leader and node should be same, else
+        #     we are essentially going to diverge by writing to different indices.
+        #   - the last term we wrote our command to, on the leader and node should be same also.
+        #     this is because the leader could send an AppendEntries message and die, which means
+        #     the followers will re-elect and continue writing. when the ex-leader comes back, it
+        #     would've diverged with the now new-leader when it sends an AppendEntries ping.
+        if (
+            msg.prev_log_idx > self._last_log_idx()
+            or self._term_at(msg.prev_log_idx) != msg.prev_log_term
+        ):
+            self.bus.send(
+                src=self.id,
+                dst=msg.leader_id,
+                payload=AppendEntriesReply(
+                    term=self.current_term, follower_id=self.id, success=False, match_idx=0
+                ),
+            )
+
+        for i, entry in enumerate(msg.entries):
+            # since raft log entries are 1-based, we add a +1.
+            # we need the + i because every new entry is going to be a
+            append_idx = msg.prev_log_idx + i + 1
+
+
+
+    # this is the handler for when a leader acks that other nodes have written
+    # sent by the follower nodes
     def _on_append_entries_reply(self, msg: AppendEntriesReply):
         pass
 
@@ -255,7 +315,7 @@ class RaftNode:
         return self.logs[-1].term if self.logs else 0
 
     def _term_at(self, idx: int) -> int:
-        # raft is 1-indexed; idx 0 means "before any entry", whose term is 0
+        # raft is 1-indexed so idx 0 means "before any entry", whose term is 0
         return self.logs[idx - 1].term if idx > 0 else 0
 
     def _last_log_idx(self) -> int:
