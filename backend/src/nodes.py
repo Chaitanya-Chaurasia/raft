@@ -124,15 +124,20 @@ class RaftNode:
     # majority of these are going to be empty chunks because leader should keep on pinging
     def _on_heartbeat_interval(self):
         now = asyncio.get_running_loop().time()
+        # of course, we need to reset the hearbeat interval before proceeding
         self.heartbeat_due = now + HEARTBEAT_INTERVAL
 
         for peer_id in self._peer_ids():
-            # anchor each follower's message at ITS next_idx, not at my tail:
-            # prev_log_idx must always be the index immediately before entries[0].
-            # caught-up follower -> empty slice (pure heartbeat); laggard -> the
-            # missing suffix; diverged -> a probe that walks back on rejections.
+            # sanity in case we're missing an entry for any peer node
+            # mostly for ui/ux needs
             self.next_idx.setdefault(peer_id, self._last_log_idx() + 1)
+
+            # we refer to the optimistic appending index
             prev_idx = self.next_idx[peer_id] - 1
+
+            # and we only want to send log entries starting at prev_idx of the follower
+            # for ex: if a node is lagging at term 4, and we are at term 8, we send self.logs[4:]
+            # so it can catch up.
             self.bus.send(
                 self.id,
                 peer_id,
@@ -301,15 +306,77 @@ class RaftNode:
 
         for i, entry in enumerate(msg.entries):
             # since raft log entries are 1-based, we add a +1.
-            # we need the + i because every new entry is going to be a
             append_idx = msg.prev_log_idx + i + 1
 
+            # we want to check if our log's idx to append is occupied or not
+            # if not, we skip this check and append the entry directly.
+            if append_idx <= self._last_log_idx():
+                # if it has been occupied, this is our neat little dedup logic
+                # we don't care about the contents, but more about the (append_idx, term) pair
+                if self._term_at(append_idx) == entry.term:
+                    continue
+                # if terms are different, we diverged, hence we truncate our list to delete
+                # the mismatching entry, and eventually come out of the block and append
+                self.logs = self.logs[: append_idx - 1]
+            self.logs.append(entry)
 
+        # now that we've added new entries, we need to change our commit index
+        # i.e. how much of our entries are verified against the leader.
+        # we simply choose the min of leader's or our last log index (in case we
+        # had to truncate the list in the block above)
+        if msg.leader_commit > self.commit_idx:
+            self.commit_idx = min(msg.leader_commit, self._last_log_idx())
+
+        # once we have appended, we send an ack across the n/w via the bus
+        self.bus.send(
+            src=self.id,
+            dst=msg.leader_id,
+            payload=AppendEntriesReply(
+                term=self.current_term,
+                follower_id=self.id,
+                success=True,
+                match_idx=msg.prev_log_idx + len(msg.entries),
+            ),
+        )
 
     # this is the handler for when a leader acks that other nodes have written
     # sent by the follower nodes
     def _on_append_entries_reply(self, msg: AppendEntriesReply):
-        pass
+        if self.role != Role.LEADER or msg.term != self.current_term:
+            return
+
+        f = msg.follower_id
+
+        if not msg.success:
+            # if the entry append failed, we need to reset the next_idx array
+            # we take the max because raft is 1-indexed
+            self.next_idx[f] = max(1, self.next_idx.get(f, 1) - 1)
+            return
+
+        # if msg was appended successfully, we want to increment the match_idx of that peer.
+        self.match_idx[f] = max(self.match_idx.get(f, 0), msg.match_idx)
+        self.next_idx[f] = self.match_idx[f] + 1
+
+        # once we've resolved for 1 follower, we need to check across the cluster as well
+        # so we can check if the majority of match_idxs have been updated, so we can update
+        # our commit_idx. example: 5 nodes; leader with 6 entries, commit_idx = 5; entry 6 was just
+        # appended and sent out via the heartbeat:
+        #   after my append:      [6, 5, 5, 3, 0]   position 2 holds 5; majority has 5 so commit = 5
+        #   n1's ack lands (→6):  [6, 6, 5, 3, 0]   but still 5. (only 2 of 5 hold entry 6)
+        #   n2's ack lands (→6):  [6, 6, 6, 3, 0]   three of five hold it.
+
+        # we will add self._last_log_idx() because self.match_idx only keeps track of peers not self
+        indices = sorted(
+            list(self.match_idx.values()) + [self._last_log_idx()],
+            reverse=True
+        )
+
+        majority = indices[(len(self._peer_ids()) + 1) // 2]
+
+        if majority > self.commit_idx and self._term_at(majority) == self.current_term:
+            log.info("n%d: commit_idx %d -> %d", self.id, self.commit_idx, majority)
+            self.commit_idx = majority
+
 
     def _last_log_term(self) -> int:
         return self.logs[-1].term if self.logs else 0
