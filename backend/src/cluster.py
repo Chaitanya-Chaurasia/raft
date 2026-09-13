@@ -1,10 +1,5 @@
 from message_bus import MessageBus
-from nodes import RaftNode
-
-# in raft terms, a cluster is a set of nodes that are able to communicate with each other and agree
-# on the same state. a node is a single instance of a raft server. (think of it as a single EC2
-# instance in an AWS region) in a real network, the nodes can talk to each other directly, but in
-# our case, we're simulating a network where the nodes can only talk to the message bus.
+from nodes import RaftNode, Role
 
 
 class Cluster:
@@ -13,21 +8,54 @@ class Cluster:
         self.message_bus = MessageBus(self)
         self.next_node_id = 0
 
-    def add_node(self, node: RaftNode):
-        self.nodes[self.next_node_id] = node
+    def add_node(self) -> int:
+        node_id = self.next_node_id
+        self.next_node_id += 1
+        node = RaftNode(node_id, self.message_bus)
+        self.nodes[node_id] = node
+        node.start()
+        return node_id
 
-    # the difference between kill and delete is that kill is a temporary (still part of
-    # the cluster, should be fixed with a reboot) but delete is a permanent state.
-    def kill_node(self, node_id: int):
-        pass
+    def kill_node(self, node_id: int) -> bool:
+        node = self.nodes.get(node_id)
+        if node is None or not node.alive:
+            return False
+        node.stop()
+        return True
 
-    def delete_node(self, node_id: int):
-        pass
+    def reboot_node(self, node_id: int) -> bool:
+        node = self.nodes.get(node_id)
+        if node is None or node.alive:
+            return False
+        node.start()
+        return True
 
-    def get_cluster_snapshot(self, node_id: int):
-        pass
+    def delete_node(self, node_id: int) -> bool:
+        node = self.nodes.get(node_id)
+        if node is None:
+            return False
+        node.stop()
+        del self.nodes[node_id]
+        return True
 
-    # since our raft nodes are not exposed to the API, we need to submit commands to the cluster
-    # which will be forwarded to the appropriate node (based on the election algorithm) via the bus.
-    def submit_command(self, command: str):
-        pass
+    def submit_command(self, command: str) -> dict:
+        for node in self.nodes.values():
+            if node.alive and node.role == Role.LEADER and node.receive_command(command):
+                return {"ok": True, "leader_id": node.id}
+        return {"ok": False, "reason": "no_leader"}
+
+    def get_cluster_snapshot(self) -> dict:
+        return {
+            "nodes": [node.snapshot() for node in self.nodes.values()],
+            "messages": [
+                {
+                    "id": m.id,
+                    "src": m.src,
+                    "dst": m.dst,
+                    "type": m.payload.type,
+                    "sent_at": m.sent_at,
+                    "deliver_at": m.deliver_at,
+                }
+                for m in self.message_bus.get_messages()
+            ],
+        }

@@ -400,4 +400,12 @@ class RaftNode:
 
     # return the current state of our node
     def snapshot(self) -> dict:
-        pass
+        return {
+            "id": self.id,
+            "alive": self.alive,
+            "role": self.role.value,
+            "term": self.current_term,
+            "voted_for": self.voted_for,
+            "commit_idx": self.commit_idx,
+            "log": [entry.model_dump() for entry in self.logs],
+        }
