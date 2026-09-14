@@ -1,19 +1,37 @@
 "use client"
 
-import { Plus, Send, Pause, Scissors, RotateCcw } from "lucide-react"
+import { Plus, Send, Scissors, RotateCcw, Unplug, Skull } from "lucide-react"
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { ClusterView } from "@/components/ClusterView"
 import { LogPanel } from "@/components/LogPanel"
-import { mockSnapshot } from "@/mock"
+import { api } from "@/lib/api"
+import { useCluster } from "@/lib/useCluster"
 
 export default function App() {
-  const snapshot = mockSnapshot
-  const leader = snapshot.nodes.find((n) => n.role === "leader")
-  const alive = snapshot.nodes.filter((n) => n.alive).length
-  const quorum = Math.floor(snapshot.nodes.length / 2) + 1
+  const { snapshot, connected } = useCluster()
+  const [command, setCommand] = useState("set x=1")
+  const [partitioned, setPartitioned] = useState(false)
+
+  const nodes = snapshot?.nodes ?? []
+  const leader = nodes.find((n) => n.alive && n.role === "leader")
+  const alive = nodes.filter((n) => n.alive).length
+  const quorum = Math.floor(nodes.length / 2) + 1
+
+  async function togglePartition() {
+    if (partitioned) {
+      await api.healPartition()
+      setPartitioned(false)
+    } else if (leader) {
+      // classic demo: cut the leader off from everyone else
+      const others = nodes.filter((n) => n.id !== leader.id).map((n) => n.id)
+      await api.setPartition([[leader.id], others])
+      setPartitioned(true)
+    }
+  }
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-4xl flex-col gap-3 p-4 text-sm">
@@ -21,7 +39,7 @@ export default function App() {
         <div className="flex items-baseline gap-2">
           <h1 className="text-sm font-semibold tracking-tight">raft visualizer</h1>
           <span className="text-xs text-muted-foreground">
-            backend not wired · mock data
+            {connected ? "live" : "connecting to backend…"}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -29,7 +47,7 @@ export default function App() {
             term {leader?.term ?? "–"}
           </Badge>
           <Badge variant="outline" className="font-mono">
-            {alive}/{snapshot.nodes.length} up · quorum {quorum}
+            {alive}/{nodes.length} up · quorum {nodes.length ? quorum : "–"}
           </Badge>
           {leader ? (
             <Badge className="font-mono">leader n{leader.id}</Badge>
@@ -40,25 +58,44 @@ export default function App() {
       </header>
 
       <div className="flex items-center gap-1.5">
-        <Button>
+        <Button onClick={() => api.addNode()}>
           <Plus /> add node
         </Button>
-        <Button variant="outline">
-          <Send /> submit command
-        </Button>
+        <form
+          className="flex items-center gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            api.submitCommand(command)
+          }}
+        >
+          <input
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            className="h-7 w-32 rounded-md border border-border bg-background px-2 font-mono text-xs tracking-tight outline-none focus:border-foreground"
+          />
+          <Button type="submit" variant="outline" disabled={!leader}>
+            <Send /> submit
+          </Button>
+        </form>
         <Separator orientation="vertical" className="h-5" />
-        <Button variant="outline">
-          <Scissors /> partition
-        </Button>
-        <Button variant="outline">
-          <RotateCcw /> heal
-        </Button>
-        <Button variant="ghost" size="icon" aria-label="pause">
-          <Pause />
+        <Button
+          variant="outline"
+          onClick={togglePartition}
+          disabled={!partitioned && !leader}
+        >
+          {partitioned ? (
+            <>
+              <RotateCcw /> heal
+            </>
+          ) : (
+            <>
+              <Unplug /> isolate leader
+            </>
+          )}
         </Button>
         <div className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground">
           <span className="font-mono">latency 50–150ms</span>
-          <span className="font-mono">drop 0%</span>
+          <span className="font-mono">beat 500ms</span>
         </div>
       </div>
 
@@ -82,7 +119,13 @@ export default function App() {
             </div>
           </CardHeader>
           <CardContent className="p-2">
-            <ClusterView snapshot={snapshot} />
+            {nodes.length > 0 && snapshot ? (
+              <ClusterView snapshot={snapshot} />
+            ) : (
+              <div className="flex h-64 items-center justify-center text-xs text-muted-foreground">
+                {connected ? "no nodes yet — add one" : "waiting for backend…"}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -91,7 +134,10 @@ export default function App() {
             <CardTitle>nodes</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1.5 p-2">
-            {snapshot.nodes.map((n) => (
+            {nodes.length === 0 && (
+              <div className="py-8 text-center text-xs text-muted-foreground">–</div>
+            )}
+            {nodes.map((n) => (
               <div
                 key={n.id}
                 className="flex items-center justify-between rounded-md border border-border px-2 py-1.5"
@@ -116,8 +162,16 @@ export default function App() {
                   <span>t{n.term}</span>
                   <span>vf {n.votedFor ?? "–"}</span>
                   <span>ci {n.commitIndex}</span>
-                  <Button variant="ghost" size="icon" className="h-5 w-5" aria-label={n.alive ? "kill node" : "reboot node"}>
-                    {n.alive ? <Scissors /> : <RotateCcw />}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    aria-label={n.alive ? "kill node" : "reboot node"}
+                    onClick={() =>
+                      n.alive ? api.killNode(n.id) : api.rebootNode(n.id)
+                    }
+                  >
+                    {n.alive ? <Skull /> : <RotateCcw />}
                   </Button>
                 </div>
               </div>
@@ -134,7 +188,11 @@ export default function App() {
           </span>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <LogPanel snapshot={snapshot} />
+          {snapshot && nodes.length > 0 ? (
+            <LogPanel snapshot={snapshot} />
+          ) : (
+            <div className="py-4 text-center text-xs text-muted-foreground">–</div>
+          )}
         </CardContent>
       </Card>
     </div>

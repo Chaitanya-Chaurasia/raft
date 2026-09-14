@@ -1,3 +1,5 @@
+import asyncio
+
 from message_bus import MessageBus
 from nodes import RaftNode, Role
 
@@ -49,6 +51,9 @@ class Cluster:
 
     def get_cluster_snapshot(self) -> dict:
         return {
+            # the bus's clock, so the frontend can place in-flight dots without
+            # sharing a clock with the server
+            "now": asyncio.get_running_loop().time(),
             "nodes": [node.snapshot() for node in self.nodes.values()],
             "messages": [
                 {

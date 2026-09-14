@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from cluster import Cluster
-from models import CommandBody
+from models import CommandBody, PartitionBody
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,7 +33,8 @@ app = FastAPI(title="raft visualizer", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    # any localhost port: next hops to 3001+ when 3000 is taken
+    allow_origin_regex=r"http://localhost:\d+",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -75,6 +76,21 @@ async def submit_command(body: CommandBody):
     # "ok" means accepted into the leader's log but NOT yet committed.
     # commitment shows up in /state a beat or two later as commit_idx advances.
     return cluster.submit_command(body.command)
+
+
+@app.post("/partition")
+async def set_partition(body: PartitionBody):
+    try:
+        cluster.message_bus.set_partition([set(g) for g in body.groups])
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return {"ok": True}
+
+
+@app.post("/partition/heal")
+async def heal_partition():
+    cluster.message_bus.fix_partition()
+    return {"ok": True}
 
 
 @app.websocket("/ws")

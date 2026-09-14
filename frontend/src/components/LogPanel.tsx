@@ -1,4 +1,4 @@
-import type { ClusterSnapshot, NodeSnapshot } from "@/mock"
+import type { ClusterSnapshot, NodeSnapshot } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 function LogRow({ node, maxLen }: { node: NodeSnapshot; maxLen: number }) {

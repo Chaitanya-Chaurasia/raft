@@ -8,6 +8,11 @@ class CommandBody(BaseModel):
     command: str
 
 
+class PartitionBody(BaseModel):
+    # json has no sets: groups arrive as lists, e.g. [[0, 1], [2, 3, 4]]
+    groups: list[list[int]]
+
+
 class LogEntry(BaseModel):
     term: int
     command: str

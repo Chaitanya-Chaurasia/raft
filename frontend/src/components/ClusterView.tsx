@@ -1,4 +1,4 @@
-import type { ClusterSnapshot, InFlightMessage, NodeSnapshot } from "@/mock"
+import type { ClusterSnapshot, InFlightMessage, NodeSnapshot } from "@/lib/api"
 
 const W = 460
 const H = 340
