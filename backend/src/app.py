@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from cluster import Cluster
-from models import CommandBody, PartitionBody
+from models import CommandBody, NetworkConfigBody, PartitionBody
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,6 +76,16 @@ async def submit_command(body: CommandBody):
     # "ok" means accepted into the leader's log but NOT yet committed.
     # commitment shows up in /state a beat or two later as commit_idx advances.
     return cluster.submit_command(body.command)
+
+
+@app.post("/config")
+async def set_network_config(body: NetworkConfigBody):
+    try:
+        cluster.message_bus.set_latency(body.latency_min_ms / 1000, body.latency_max_ms / 1000)
+        cluster.message_bus.set_drop_rate(body.drop_rate)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return {"ok": True}
 
 
 @app.post("/partition")

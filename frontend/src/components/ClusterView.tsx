@@ -1,3 +1,4 @@
+import { Database } from "lucide-react"
 import type { ClusterSnapshot, InFlightMessage, NodeSnapshot } from "@/lib/api"
 
 const W = 460
@@ -53,7 +54,7 @@ function MessageDot({
   )
 }
 
-function NodeCircle({
+function NodeGlyph({
   node,
   pos,
 }: {
@@ -74,26 +75,26 @@ function NodeCircle({
         strokeWidth={1.25}
         strokeDasharray={candidate ? "4 3" : dead ? "2 3" : undefined}
       />
+      {/* lucide icons are plain <svg> elements, so they nest into our canvas
+          with x/y positioning like any other svg node */}
+      <Database
+        x={pos.x - 9}
+        y={pos.y - 13}
+        width={18}
+        height={18}
+        color={leader ? "#ffffff" : "#0a0a0a"}
+        strokeWidth={1.75}
+      />
       <text
         x={pos.x}
-        y={pos.y - 2}
-        textAnchor="middle"
-        fontSize={11}
-        fontWeight={600}
-        fill={leader ? "#ffffff" : "#0a0a0a"}
-        className="font-mono"
-      >
-        n{node.id}
-      </text>
-      <text
-        x={pos.x}
-        y={pos.y + 10}
+        y={pos.y + 15}
         textAnchor="middle"
         fontSize={8}
+        fontWeight={600}
         fill={leader ? "#a3a3a3" : "#737373"}
         className="font-mono"
       >
-        t{node.term}
+        n{node.id}·t{node.term}
       </text>
       <text
         x={pos.x}
@@ -119,6 +120,12 @@ export function ClusterView({ snapshot }: { snapshot: ClusterSnapshot }) {
       role="img"
       aria-label="raft cluster"
     >
+      <defs>
+        <pattern id="bg-dots" width={16} height={16} patternUnits="userSpaceOnUse">
+          <circle cx={1.5} cy={1.5} r={1} fill="#e5e5e5" />
+        </pattern>
+      </defs>
+      <rect width={W} height={H} rx={8} fill="url(#bg-dots)" />
       {/* faint links between every pair */}
       {snapshot.nodes.map((a, i) =>
         snapshot.nodes.slice(i + 1).map((b) => {
@@ -141,7 +148,7 @@ export function ClusterView({ snapshot }: { snapshot: ClusterSnapshot }) {
         <MessageDot key={m.id} msg={m} positions={positions} />
       ))}
       {snapshot.nodes.map((n) => (
-        <NodeCircle key={n.id} node={n} pos={positions.get(n.id)!} />
+        <NodeGlyph key={n.id} node={n} pos={positions.get(n.id)!} />
       ))}
     </svg>
   )

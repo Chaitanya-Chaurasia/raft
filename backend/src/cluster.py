@@ -54,6 +54,12 @@ class Cluster:
             # the bus's clock, so the frontend can place in-flight dots without
             # sharing a clock with the server
             "now": asyncio.get_running_loop().time(),
+            "config": {
+                "latency_min_ms": self.message_bus.latency_range[0] * 1000,
+                "latency_max_ms": self.message_bus.latency_range[1] * 1000,
+                "drop_rate": self.message_bus.drop_rate,
+                "partitioned": self.message_bus.partition is not None,
+            },
             "nodes": [node.snapshot() for node in self.nodes.values()],
             "messages": [
                 {

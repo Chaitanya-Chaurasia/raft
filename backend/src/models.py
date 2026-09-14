@@ -13,6 +13,13 @@ class PartitionBody(BaseModel):
     groups: list[list[int]]
 
 
+class NetworkConfigBody(BaseModel):
+    # the frontend thinks in ms / percent-free units; the bus thinks in seconds
+    latency_min_ms: float
+    latency_max_ms: float
+    drop_rate: float
+
+
 class LogEntry(BaseModel):
     term: int
     command: str

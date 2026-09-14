@@ -38,9 +38,17 @@ export interface InFlightMessage {
   progress: number // 0..1 along the src -> dst path
 }
 
+export interface NetworkConfig {
+  latencyMinMs: number
+  latencyMaxMs: number
+  dropRate: number
+  partitioned: boolean
+}
+
 export interface ClusterSnapshot {
   nodes: NodeSnapshot[]
   messages: InFlightMessage[]
+  config: NetworkConfig
 }
 
 // ── wire format (backend field names) ─────────────────────────────────────
@@ -68,10 +76,22 @@ export interface WireSnapshot {
   now: number
   nodes: WireNode[]
   messages: WireMessage[]
+  config: {
+    latency_min_ms: number
+    latency_max_ms: number
+    drop_rate: number
+    partitioned: boolean
+  }
 }
 
 export function adaptSnapshot(wire: WireSnapshot): ClusterSnapshot {
   return {
+    config: {
+      latencyMinMs: wire.config.latency_min_ms,
+      latencyMaxMs: wire.config.latency_max_ms,
+      dropRate: wire.config.drop_rate,
+      partitioned: wire.config.partitioned,
+    },
     nodes: wire.nodes.map((n) => ({
       id: n.id,
       alive: n.alive,
@@ -112,5 +132,11 @@ export const api = {
   rebootNode: (id: number) => post(`/nodes/${id}/reboot`),
   submitCommand: (command: string) => post("/command", { command }),
   setPartition: (groups: number[][]) => post("/partition", { groups }),
+  setConfig: (cfg: { latencyMinMs: number; latencyMaxMs: number; dropRate: number }) =>
+    post("/config", {
+      latency_min_ms: cfg.latencyMinMs,
+      latency_max_ms: cfg.latencyMaxMs,
+      drop_rate: cfg.dropRate,
+    }),
   healPartition: () => post("/partition/heal"),
 }
