@@ -1,5 +1,3 @@
-import asyncio
-
 from conftest import StubBus
 
 from models import (
@@ -96,13 +94,13 @@ async def test_duplicate_grant_from_same_voter_counts_once():
     node._start_election()
     node.handle_message(RequestVoteReply(term=1, voter_id=1, vote_granted=True))
     node.handle_message(RequestVoteReply(term=1, voter_id=1, vote_granted=True))
-    assert node.role == Role.CANDIDATE     # 2 of 5 is not a majority
+    assert node.role == Role.CANDIDATE  # 2 of 5 is not a majority
 
 
 async def test_stale_vote_reply_is_ignored():
     node = make_node()
     node._start_election()
-    node._start_election()                  # now campaigning in term 2
+    node._start_election()  # now campaigning in term 2
     node.handle_message(RequestVoteReply(term=1, voter_id=1, vote_granted=True))
     assert node.role == Role.CANDIDATE
 
@@ -199,35 +197,53 @@ async def test_stale_leader_gets_refused_and_educated():
     reply = node.bus.payloads_to(1)[-1]
     assert reply.success is False
     assert reply.term == 4
-    assert len(node.logs) == 2             # nothing grafted
+    assert len(node.logs) == 2  # nothing grafted
 
 
 async def test_consistency_check_rejects_missing_anchor():
     node = make_node()
-    node.handle_message(AppendEntries(
-        term=1, leader_id=1, prev_log_idx=5, prev_log_term=1, entries=entries(1),
-    ))
+    node.handle_message(
+        AppendEntries(
+            term=1,
+            leader_id=1,
+            prev_log_idx=5,
+            prev_log_term=1,
+            entries=entries(1),
+        )
+    )
     reply = node.bus.payloads_to(1)[-1]
     assert reply.success is False
-    assert node.logs == []                 # nothing grafted past a failed anchor
+    assert node.logs == []  # nothing grafted past a failed anchor
 
 
 async def test_consistency_check_rejects_wrong_term_at_anchor():
     node = make_node()
     node.current_term = 3
     node.logs = entries(1, 2)
-    node.handle_message(AppendEntries(
-        term=3, leader_id=1, prev_log_idx=2, prev_log_term=3, entries=entries(3),
-    ))
+    node.handle_message(
+        AppendEntries(
+            term=3,
+            leader_id=1,
+            prev_log_idx=2,
+            prev_log_term=3,
+            entries=entries(3),
+        )
+    )
     assert node.bus.payloads_to(1)[-1].success is False
 
 
 async def test_appends_new_entries_and_acks_match():
     node = make_node()
-    node.handle_message(AppendEntries(
-        term=1, leader_id=1, prev_log_idx=0, prev_log_term=0,
-        entries=entries(1, 1), leader_commit=0,
-    ))
+    node.handle_message(
+        AppendEntries(
+            term=1,
+            leader_id=1,
+            prev_log_idx=0,
+            prev_log_term=0,
+            entries=entries(1, 1),
+            leader_commit=0,
+        )
+    )
     reply = node.bus.payloads_to(1)[-1]
     assert reply.success is True
     assert reply.match_idx == 2
@@ -237,7 +253,11 @@ async def test_appends_new_entries_and_acks_match():
 async def test_retransmission_is_idempotent():
     node = make_node()
     msg = AppendEntries(
-        term=1, leader_id=1, prev_log_idx=0, prev_log_term=0, entries=entries(1, 1),
+        term=1,
+        leader_id=1,
+        prev_log_idx=0,
+        prev_log_term=0,
+        entries=entries(1, 1),
     )
     node.handle_message(msg)
     node.handle_message(msg)
@@ -247,29 +267,46 @@ async def test_retransmission_is_idempotent():
 async def test_conflicting_suffix_is_truncated_and_replaced():
     node = make_node()
     node.current_term = 3
-    node.logs = entries(1, 2, 2)           # entries 2,3 are a dead reign's residue
-    node.handle_message(AppendEntries(
-        term=3, leader_id=1, prev_log_idx=1, prev_log_term=1,
-        entries=entries(3, 3),
-    ))
+    node.logs = entries(1, 2, 2)  # entries 2,3 are a dead reign's residue
+    node.handle_message(
+        AppendEntries(
+            term=3,
+            leader_id=1,
+            prev_log_idx=1,
+            prev_log_term=1,
+            entries=entries(3, 3),
+        )
+    )
     assert [e.term for e in node.logs] == [1, 3, 3]
 
 
 async def test_stale_retransmission_does_not_shorten_log():
     node = make_node()
     node.logs = entries(1, 1, 1, 1)
-    node.handle_message(AppendEntries(
-        term=1, leader_id=1, prev_log_idx=0, prev_log_term=0, entries=entries(1, 1),
-    ))
-    assert len(node.logs) == 4             # duplicate of a prefix must not truncate
+    node.handle_message(
+        AppendEntries(
+            term=1,
+            leader_id=1,
+            prev_log_idx=0,
+            prev_log_term=0,
+            entries=entries(1, 1),
+        )
+    )
+    assert len(node.logs) == 4  # duplicate of a prefix must not truncate
 
 
 async def test_commit_idx_follows_leader_commit_clamped_to_tail():
     node = make_node()
-    node.handle_message(AppendEntries(
-        term=1, leader_id=1, prev_log_idx=0, prev_log_term=0,
-        entries=entries(1, 1), leader_commit=5,
-    ))
+    node.handle_message(
+        AppendEntries(
+            term=1,
+            leader_id=1,
+            prev_log_idx=0,
+            prev_log_term=0,
+            entries=entries(1, 1),
+            leader_commit=5,
+        )
+    )
     assert node.commit_idx == 2
 
 
@@ -277,9 +314,15 @@ async def test_commit_idx_never_retreats():
     node = make_node()
     node.logs = entries(1, 1, 1)
     node.commit_idx = 3
-    node.handle_message(AppendEntries(
-        term=1, leader_id=1, prev_log_idx=3, prev_log_term=1, leader_commit=1,
-    ))
+    node.handle_message(
+        AppendEntries(
+            term=1,
+            leader_id=1,
+            prev_log_idx=3,
+            prev_log_term=1,
+            leader_commit=1,
+        )
+    )
     assert node.commit_idx == 3
 
 
@@ -297,7 +340,7 @@ async def test_failed_ack_walks_next_idx_back():
     leader = make_leader()
     leader.handle_message(AppendEntriesReply(term=1, follower_id=1, success=False, match_idx=0))
     assert leader.next_idx[1] == 2
-    assert leader.match_idx[1] == 0        # a rejection teaches nothing about their log
+    assert leader.match_idx[1] == 0  # a rejection teaches nothing about their log
 
 
 async def test_walk_back_floors_at_one():
@@ -312,7 +355,7 @@ async def test_successful_ack_advances_bookkeeping_and_commits():
     leader.handle_message(AppendEntriesReply(term=1, follower_id=1, success=True, match_idx=2))
     assert leader.match_idx[1] == 2
     assert leader.next_idx[1] == 3
-    assert leader.commit_idx == 2          # leader + n1 = 2 of 3
+    assert leader.commit_idx == 2  # leader + n1 = 2 of 3
 
 
 async def test_stale_ack_cannot_drag_match_idx_backward():
@@ -325,12 +368,12 @@ async def test_stale_ack_cannot_drag_match_idx_backward():
 async def test_minority_ack_does_not_commit():
     leader = make_leader(members={0, 1, 2, 3, 4})
     leader.handle_message(AppendEntriesReply(term=1, follower_id=1, success=True, match_idx=2))
-    assert leader.commit_idx == 0          # leader + n1 = 2 of 5
+    assert leader.commit_idx == 0  # leader + n1 = 2 of 5
 
 
 async def test_own_term_guard_blocks_commit_of_inherited_entries():
     leader = make_leader()
-    leader.current_term = 2                # re-elected; log entries are term 1
+    leader.current_term = 2  # re-elected; log entries are term 1
     leader.handle_message(AppendEntriesReply(term=2, follower_id=1, success=True, match_idx=2))
     assert leader.commit_idx == 0
 

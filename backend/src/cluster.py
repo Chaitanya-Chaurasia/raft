@@ -4,6 +4,7 @@ from nodes import RaftNode, Role
 # these are simple operations based on how a network cluster would look like.
 # CRUD node operations, send commands to leader, get cluster snapshot.
 
+
 class Cluster:
     def __init__(self):
         self.nodes: dict[int, RaftNode] = {}

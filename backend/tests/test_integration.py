@@ -84,8 +84,7 @@ async def test_partition_and_heal(fast_constants):
         await asyncio.sleep(0.8)
 
         majority_leaders = [
-            n for n in cluster.nodes.values()
-            if n.id in others and n.role == Role.LEADER
+            n for n in cluster.nodes.values() if n.id in others and n.role == Role.LEADER
         ]
         assert len(majority_leaders) == 1, "majority side failed to elect"
         assert leader.role == Role.LEADER, "minority leader cannot learn it was deposed yet"

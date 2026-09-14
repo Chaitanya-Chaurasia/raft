@@ -1,14 +1,21 @@
 # every node lives in a RaftNode class, and is only directly going to talk to other
 # nodes via the message_bus (a network simulation over our cluster). every node is spawned
 # in our cluster and we can have many different clusters.
-from models import AppendEntriesReply
-from models import MessagePayload
-from models import AppendEntries, RequestVoteReply, LogEntry, RequestVote, Role
 import asyncio
 import logging
 import random
 from logging import Logger
+
 from message_bus import MessageBus
+from models import (
+    AppendEntries,
+    AppendEntriesReply,
+    LogEntry,
+    MessagePayload,
+    RequestVote,
+    RequestVoteReply,
+    Role,
+)
 
 log: Logger = logging.getLogger(__name__)
 
@@ -368,17 +375,13 @@ class RaftNode:
         #   n2's ack lands (→6):  [6, 6, 6, 3, 0]   three of five hold it.
 
         # we will add self._last_log_idx() because self.match_idx only keeps track of peers not self
-        indices = sorted(
-            list(self.match_idx.values()) + [self._last_log_idx()],
-            reverse=True
-        )
+        indices = sorted(list(self.match_idx.values()) + [self._last_log_idx()], reverse=True)
 
         majority = indices[(len(self._peer_ids()) + 1) // 2]
 
         if majority > self.commit_idx and self._term_at(majority) == self.current_term:
             log.info("n%d: commit_idx %d -> %d", self.id, self.commit_idx, majority)
             self.commit_idx = majority
-
 
     def _last_log_term(self) -> int:
         return self.logs[-1].term if self.logs else 0

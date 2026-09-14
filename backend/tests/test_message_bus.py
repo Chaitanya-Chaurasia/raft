@@ -24,7 +24,7 @@ async def test_send_delivers_payload_after_latency():
     bus = make_bus({0: FakeNode(), 1: dst})
 
     bus.send(0, 1, vote_payload())
-    assert dst.received == []          # not yet: still in flight
+    assert dst.received == []  # not yet: still in flight
 
     await asyncio.sleep(0.05)
     assert len(dst.received) == 1
@@ -70,7 +70,7 @@ async def test_drop_rate_one_drops_everything():
     for _ in range(10):
         bus.send(0, 1, vote_payload())
 
-    assert bus.get_messages() == []    # dropped at send time, never in flight
+    assert bus.get_messages() == []  # dropped at send time, never in flight
     await asyncio.sleep(0.05)
     assert dst.received == []
 
@@ -82,7 +82,7 @@ async def test_dead_node_swallows_message_silently():
     bus.send(0, 1, vote_payload())
     await asyncio.sleep(0.05)
     assert dst.received == []
-    assert bus.get_messages() == []    # dead letter still leaves the wire
+    assert bus.get_messages() == []  # dead letter still leaves the wire
 
 
 async def test_unknown_destination_is_a_dead_letter():
@@ -97,8 +97,8 @@ async def test_partition_blocks_cross_group_and_allows_within():
     bus = make_bus({0: a, 1: b, 2: c})
     bus.set_partition([{0, 1}, {2}])
 
-    bus.send(0, 1, vote_payload())     # same group: goes through
-    bus.send(0, 2, vote_payload())     # cross group: silently blocked
+    bus.send(0, 1, vote_payload())  # same group: goes through
+    bus.send(0, 2, vote_payload())  # cross group: silently blocked
     await asyncio.sleep(0.05)
 
     assert len(b.received) == 1
