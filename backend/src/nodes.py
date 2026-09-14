@@ -20,9 +20,9 @@ from models import (
 log: Logger = logging.getLogger(__name__)
 
 TICK = 0.01  # how often _run checks the clocks
-ELECTION_TIMEOUT_RANGE = (1.5, 3.0)
+ELECTION_TIMEOUT_RANGE = (7.0, 14.0)
 # this has to be <<< ELECTION_TIMEOUT_RANGE so we can simulate multiple heartbeats per election
-HEARTBEAT_INTERVAL = 0.5
+HEARTBEAT_INTERVAL = 3.0
 
 # few terminologies for pedagogical clarifications:
 #   - term : this is a numeric system we use to keep track of a cluster's history. this is local and
@@ -42,6 +42,11 @@ class RaftNode:
         self.bus = bus
         self.current_term = 0
         self.voted_for: int | None = None
+
+        # timing is per-node state (seeded from module defaults) so the UI can
+        # retune a live cluster; module constants remain the single default.
+        self.election_timeout_range: tuple[float, float] = ELECTION_TIMEOUT_RANGE
+        self.heartbeat_interval: float = HEARTBEAT_INTERVAL
 
         # this is our persistent storage. on real nodes, this is implemented using WAL.
         self.logs: list[LogEntry] = []
@@ -132,7 +137,7 @@ class RaftNode:
     def _on_heartbeat_interval(self):
         now = asyncio.get_running_loop().time()
         # of course, we need to reset the hearbeat interval before proceeding
-        self.heartbeat_due = now + HEARTBEAT_INTERVAL
+        self.heartbeat_due = now + self.heartbeat_interval
 
         for peer_id in self._peer_ids():
             # sanity in case we're missing an entry for any peer node
@@ -395,7 +400,7 @@ class RaftNode:
 
     def _reset_election_deadline(self):
         now = asyncio.get_running_loop().time()
-        self.election_deadline = now + random.uniform(*ELECTION_TIMEOUT_RANGE)
+        self.election_deadline = now + random.uniform(*self.election_timeout_range)
 
     def _on_election_timeout(self):
         self._start_election()

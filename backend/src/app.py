@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from cluster import Cluster
-from models import CommandBody, NetworkConfigBody, PartitionBody
+from models import CommandBody, NetworkConfigBody, PartitionBody, TimingConfigBody
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,6 +83,15 @@ async def set_network_config(body: NetworkConfigBody):
     try:
         cluster.message_bus.set_latency(body.latency_min_ms / 1000, body.latency_max_ms / 1000)
         cluster.message_bus.set_drop_rate(body.drop_rate)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return {"ok": True}
+
+
+@app.post("/timing")
+async def set_timing(body: TimingConfigBody):
+    try:
+        cluster.set_timing(body.heartbeat_s, body.election_min_s, body.election_max_s)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return {"ok": True}

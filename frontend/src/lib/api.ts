@@ -43,6 +43,9 @@ export interface NetworkConfig {
   latencyMaxMs: number
   dropRate: number
   partitioned: boolean
+  heartbeatS: number
+  electionMinS: number
+  electionMaxS: number
 }
 
 export interface ClusterSnapshot {
@@ -81,6 +84,9 @@ export interface WireSnapshot {
     latency_max_ms: number
     drop_rate: number
     partitioned: boolean
+    heartbeat_s: number
+    election_min_s: number
+    election_max_s: number
   }
 }
 
@@ -91,6 +97,9 @@ export function adaptSnapshot(wire: WireSnapshot): ClusterSnapshot {
       latencyMaxMs: wire.config.latency_max_ms,
       dropRate: wire.config.drop_rate,
       partitioned: wire.config.partitioned,
+      heartbeatS: wire.config.heartbeat_s,
+      electionMinS: wire.config.election_min_s,
+      electionMaxS: wire.config.election_max_s,
     },
     nodes: wire.nodes.map((n) => ({
       id: n.id,
@@ -137,6 +146,12 @@ export const api = {
       latency_min_ms: cfg.latencyMinMs,
       latency_max_ms: cfg.latencyMaxMs,
       drop_rate: cfg.dropRate,
+    }),
+  setTiming: (cfg: { heartbeatS: number; electionMinS: number; electionMaxS: number }) =>
+    post("/timing", {
+      heartbeat_s: cfg.heartbeatS,
+      election_min_s: cfg.electionMinS,
+      election_max_s: cfg.electionMaxS,
     }),
   healPartition: () => post("/partition/heal"),
 }

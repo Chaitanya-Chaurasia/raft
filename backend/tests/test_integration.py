@@ -1,18 +1,16 @@
 import asyncio
 
-import pytest
-
-import nodes as nodes_module
 from cluster import Cluster
 from models import Role
 
 
-@pytest.fixture
-def fast_constants(monkeypatch):
-    # ~10x faster than the interactive constants so the full lifecycle runs in ~3s.
-    # the broadcastTime << electionTimeout hierarchy is preserved.
-    monkeypatch.setattr(nodes_module, "ELECTION_TIMEOUT_RANGE", (0.15, 0.30))
-    monkeypatch.setattr(nodes_module, "HEARTBEAT_INTERVAL", 0.05)
+def make_fast_cluster() -> Cluster:
+    # ~10x faster than the interactive defaults so the full lifecycle runs in ~3s.
+    # uses the real runtime knob (set_timing), so this also exercises it.
+    cluster = Cluster()
+    cluster.set_timing(heartbeat_s=0.05, election_min_s=0.15, election_max_s=0.30)
+    cluster.message_bus.latency_range = (0.005, 0.02)
+    return cluster
 
 
 def leader_of(cluster: Cluster):
@@ -21,9 +19,8 @@ def leader_of(cluster: Cluster):
     return leaders[0] if leaders else None
 
 
-async def test_full_lifecycle(fast_constants):
-    cluster = Cluster()
-    cluster.message_bus.latency_range = (0.005, 0.02)
+async def test_full_lifecycle():
+    cluster = make_fast_cluster()
     try:
         # spawn 3 -> exactly one leader emerges
         for _ in range(3):
@@ -68,9 +65,8 @@ async def test_full_lifecycle(fast_constants):
                 n.stop()
 
 
-async def test_partition_and_heal(fast_constants):
-    cluster = Cluster()
-    cluster.message_bus.latency_range = (0.005, 0.02)
+async def test_partition_and_heal():
+    cluster = make_fast_cluster()
     try:
         for _ in range(3):
             cluster.add_node()

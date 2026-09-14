@@ -87,3 +87,24 @@ async def test_bus_and_cluster_are_mutually_wired(cluster):
     node_id = cluster.add_node()
     assert isinstance(cluster.nodes[node_id], RaftNode)
     assert cluster.message_bus.peer_ids(exclude=node_id) == set()
+
+
+async def test_set_timing_applies_to_existing_and_future_nodes(cluster):
+    first = cluster.add_node()
+    cluster.set_timing(heartbeat_s=0.2, election_min_s=0.5, election_max_s=1.0)
+    second = cluster.add_node()
+    for node_id in (first, second):
+        node = cluster.nodes[node_id]
+        assert node.heartbeat_interval == 0.2
+        assert node.election_timeout_range == (0.5, 1.0)
+
+
+async def test_set_timing_enforces_the_hierarchy(cluster):
+    import pytest
+
+    with pytest.raises(ValueError):
+        cluster.set_timing(heartbeat_s=0, election_min_s=1, election_max_s=2)
+    with pytest.raises(ValueError):
+        cluster.set_timing(heartbeat_s=1, election_min_s=1.5, election_max_s=2)
+    with pytest.raises(ValueError):
+        cluster.set_timing(heartbeat_s=0.1, election_min_s=2, election_max_s=1)

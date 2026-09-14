@@ -9,6 +9,7 @@ import { InfoTip } from "@/components/ui/infotip"
 import { Separator } from "@/components/ui/separator"
 import { ClusterView } from "@/components/ClusterView"
 import { LogPanel } from "@/components/LogPanel"
+import { NetworkPanel } from "@/components/NetworkPanel"
 import { api } from "@/lib/api"
 import { useCluster } from "@/lib/useCluster"
 
@@ -20,6 +21,9 @@ export default function App() {
   const [latMin, setLatMin] = useState("50")
   const [latMax, setLatMax] = useState("150")
   const [drop, setDrop] = useState("0")
+  const [beat, setBeat] = useState("1")
+  const [electMin, setElectMin] = useState("3")
+  const [electMax, setElectMax] = useState("6")
   const seeded = useRef(false)
   useEffect(() => {
     if (snapshot && !seeded.current) {
@@ -27,6 +31,9 @@ export default function App() {
       setLatMin(String(Math.round(snapshot.config.latencyMinMs)))
       setLatMax(String(Math.round(snapshot.config.latencyMaxMs)))
       setDrop(String(Math.round(snapshot.config.dropRate * 100)))
+      setBeat(String(snapshot.config.heartbeatS))
+      setElectMin(String(snapshot.config.electionMinS))
+      setElectMax(String(snapshot.config.electionMaxS))
     }
   }, [snapshot])
 
@@ -41,6 +48,14 @@ export default function App() {
       latencyMinMs: Number(latMin) || 0,
       latencyMaxMs: Number(latMax) || 0,
       dropRate: (Number(drop) || 0) / 100,
+    })
+  }
+
+  function pushTiming() {
+    api.setTiming({
+      heartbeatS: Number(beat) || 0,
+      electionMinS: Number(electMin) || 0,
+      electionMaxS: Number(electMax) || 0,
     })
   }
 
@@ -62,8 +77,8 @@ export default function App() {
       <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-6xl items-center justify-between gap-4 px-4">
           <h1 className="truncate text-xs font-semibold tracking-tight sm:text-sm">
-            Raft Consensus Algorithm for Consistency and fault tolerance in
-            distributed systems.
+            Raft: Consensus for Consistency and Fault Tolerance in Distributed
+            Systems
           </h1>
           <div className="flex shrink-0 items-center gap-1.5">
             {!connected && (
@@ -73,12 +88,18 @@ export default function App() {
             )}
             <Badge variant="outline" className="gap-1 font-mono">
               term {leader?.term ?? "–"}
-              <InfoTip text="raft's logical clock: it increments on every election attempt, and a higher term always wins an argument between nodes" />
+              <InfoTip
+                side="bottom"
+                text="raft's logical clock: it increments on every election attempt, and a higher term always wins an argument between nodes"
+              />
             </Badge>
             <Badge variant="outline" className="gap-1 font-mono">
               {alive}/{nodes.length} up · majority{" "}
               {nodes.length ? majority : "–"}
-              <InfoTip text="floor(n/2)+1 members must agree to elect a leader or commit an entry. dead nodes still count toward n — lose too many and the cluster stalls safely" />
+              <InfoTip
+                side="bottom"
+                text="floor(n/2)+1 members must agree to elect a leader or commit an entry. dead nodes still count toward n — lose too many and the cluster stalls safely"
+              />
             </Badge>
             {leader ? (
               <Badge className="font-mono">leader n{leader.id}</Badge>
@@ -162,6 +183,40 @@ export default function App() {
               className={`${knobClass} w-9`}
             />
             <span>%</span>
+            <Separator orientation="vertical" className="h-4" />
+            <span className="inline-flex items-center gap-1">
+              beat
+              <InfoTip text="how often the leader sends AppendEntries to every follower. heartbeats are what suppress new elections" />
+            </span>
+            <input
+              value={beat}
+              onChange={(e) => setBeat(e.target.value)}
+              onBlur={pushTiming}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+              className={`${knobClass} w-9`}
+            />
+            <span>s</span>
+            <Separator orientation="vertical" className="h-4" />
+            <span className="inline-flex items-center gap-1">
+              elect
+              <InfoTip text="each node waits a random time in this range before starting an election. randomness is what prevents endless split votes — and it must stay well above the heartbeat" />
+            </span>
+            <input
+              value={electMin}
+              onChange={(e) => setElectMin(e.target.value)}
+              onBlur={pushTiming}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+              className={`${knobClass} w-9`}
+            />
+            <span>–</span>
+            <input
+              value={electMax}
+              onChange={(e) => setElectMax(e.target.value)}
+              onBlur={pushTiming}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+              className={`${knobClass} w-9`}
+            />
+            <span>s</span>
           </div>
         </div>
 
@@ -198,7 +253,8 @@ export default function App() {
             </CardContent>
           </Card>
 
-          <Card className="md:col-span-2">
+          <div className="flex flex-col gap-3 md:col-span-2">
+          <Card>
             <CardHeader>
               <CardTitle className="inline-flex items-center gap-1.5">
                 nodes
@@ -254,6 +310,25 @@ export default function App() {
               ))}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="inline-flex items-center gap-1.5">
+                network
+                <InfoTip text="the simulated wire itself: every rpc pushes onto it when sent and pops off when delivered (or silently never arrives, if dropped)" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-2">
+              {snapshot ? (
+                <NetworkPanel snapshot={snapshot} />
+              ) : (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  –
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          </div>
         </div>
 
         <Card>

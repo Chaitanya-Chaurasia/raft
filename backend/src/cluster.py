@@ -1,7 +1,7 @@
 import asyncio
 
 from message_bus import MessageBus
-from nodes import RaftNode, Role
+from nodes import ELECTION_TIMEOUT_RANGE, HEARTBEAT_INTERVAL, RaftNode, Role
 
 # these are simple operations based on how a network cluster would look like.
 # CRUD node operations, send commands to leader, get cluster snapshot.
@@ -12,11 +12,15 @@ class Cluster:
         self.nodes: dict[int, RaftNode] = {}
         self.message_bus = MessageBus(self)
         self.next_node_id = 0
+        self.heartbeat_interval = HEARTBEAT_INTERVAL
+        self.election_timeout_range = ELECTION_TIMEOUT_RANGE
 
     def add_node(self) -> int:
         node_id = self.next_node_id
         self.next_node_id += 1
         node = RaftNode(node_id, self.message_bus)
+        node.heartbeat_interval = self.heartbeat_interval
+        node.election_timeout_range = self.election_timeout_range
         self.nodes[node_id] = node
         node.start()
         return node_id
@@ -49,6 +53,17 @@ class Cluster:
                 return {"ok": True, "leader_id": node.id}
         return {"ok": False, "reason": "no_leader"}
 
+    def set_timing(self, heartbeat_s: float, election_min_s: float, election_max_s: float):
+        if heartbeat_s <= 0:
+            raise ValueError("heartbeat must be positive")
+        if not heartbeat_s * 2 <= election_min_s <= election_max_s:
+            raise ValueError("timing must satisfy 2*heartbeat <= election_min <= election_max")
+        self.heartbeat_interval = heartbeat_s
+        self.election_timeout_range = (election_min_s, election_max_s)
+        for node in self.nodes.values():
+            node.heartbeat_interval = heartbeat_s
+            node.election_timeout_range = (election_min_s, election_max_s)
+
     def get_cluster_snapshot(self) -> dict:
         return {
             # the bus's clock, so the frontend can place in-flight dots without
@@ -59,6 +74,9 @@ class Cluster:
                 "latency_max_ms": self.message_bus.latency_range[1] * 1000,
                 "drop_rate": self.message_bus.drop_rate,
                 "partitioned": self.message_bus.partition is not None,
+                "heartbeat_s": self.heartbeat_interval,
+                "election_min_s": self.election_timeout_range[0],
+                "election_max_s": self.election_timeout_range[1],
             },
             "nodes": [node.snapshot() for node in self.nodes.values()],
             "messages": [

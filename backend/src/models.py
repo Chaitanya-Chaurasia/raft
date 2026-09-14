@@ -13,6 +13,12 @@ class PartitionBody(BaseModel):
     groups: list[list[int]]
 
 
+class TimingConfigBody(BaseModel):
+    heartbeat_s: float
+    election_min_s: float
+    election_max_s: float
+
+
 class NetworkConfigBody(BaseModel):
     # the frontend thinks in ms / percent-free units; the bus thinks in seconds
     latency_min_ms: float
