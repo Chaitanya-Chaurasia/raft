@@ -73,7 +73,7 @@ class RaftNode:
             self._task = None
         log.info("n%d: stopped (crash)", self.id)
 
-    def recieve_command(self, command: str) -> bool:
+    def receive_command(self, command: str) -> bool:
         # only the leaders can append
         if self.role != Role.LEADER or not self.alive:
             return False
@@ -279,6 +279,7 @@ class RaftNode:
                     term=self.current_term, follower_id=self.id, success=False, match_idx=0
                 ),
             )
+            return
 
         # in case the terms are legit, we want to make sure we're still the follower and
         # reset election deadline
@@ -303,6 +304,7 @@ class RaftNode:
                     term=self.current_term, follower_id=self.id, success=False, match_idx=0
                 ),
             )
+            return
 
         for i, entry in enumerate(msg.entries):
             # since raft log entries are 1-based, we add a +1.

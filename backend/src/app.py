@@ -17,7 +17,7 @@ def get_node_state():
 
 
 @app.post("/nodes")
-def create_node():
+def create_node(id: int):
     pass
 
 
